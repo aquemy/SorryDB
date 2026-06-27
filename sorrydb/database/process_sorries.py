@@ -210,7 +210,13 @@ def get_repo_lean_version(repo_path: Path) -> str:
 
 
 def prepare_and_process_lean_repo(
-    repo_url: str, lean_data: Path, branch: str | None = None
+    repo_url: str,
+    lean_data: Path,
+    branch: str | None = None,
+    with_contamination: bool = False,
+    namespace: str | None = None,
+    claimgraph_bin: str = "claimgraph",
+    axiom_report: str | None = None,
 ):
     """
     Comprehensive function that prepares a repository, builds a Lean project,
@@ -251,6 +257,26 @@ def prepare_and_process_lean_repo(
         "metadata": metadata,
         "sorries": sorries,
     }
+
+    # Optional: kernel-grounded contamination (#print axioms), the layer SorryDB's literal-sorry
+    # index does not have. It needs the project built even when it carries no literal sorry (the
+    # PFR pattern: silent sorryAx with no source `sorry`), so build explicitly here.
+    if with_contamination:
+        from sorrydb.database.contamination import analyze_contamination
+
+        build_lean_project(checkout_path)
+        contamination = analyze_contamination(
+            checkout_path,
+            namespace=namespace,
+            claimgraph_bin=claimgraph_bin,
+            axiom_report=axiom_report,
+        )
+        if contamination is not None:
+            results["contamination"] = contamination
+            logger.info(
+                f"Contamination: {contamination['n_open']} open declarations, "
+                f"{len(contamination['silent_contamination'])} silent (grep-invisible)."
+            )
 
     logger.info(f"Finished processing {repo_url}. Found {len(sorries)} sorries.")
     return results
